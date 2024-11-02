@@ -1,0 +1,29 @@
+# Virtual environment
+.venv/
+
+# Assets 
+assets/
+
+# Build artifacts
+dist/
+output/
+build_temp/
+build/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets
+*.key
+*.pem
+*.ppk
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Scripts
+*.sh
