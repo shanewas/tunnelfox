@@ -6,14 +6,15 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLineEdit, QToolBar, QAction, QMessageBox, QProgressBar, QStatusBar, QLabel
+    QApplication, QMainWindow, QWidget, QVBoxLayout,
+    QLineEdit, QToolBar, QAction, QMessageBox,
+    QProgressBar, QStatusBar, QLabel, QFileDialog
 )
-from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import QUrl, QSize
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
+from PyQt5.QtCore import QUrl, QSize, QTimer
 
 # ============================================================
-#  TunnelFox v0.4  —  Address bar + navigation toolbar
+#  TunnelFox v0.5  —  Tunnel health monitor + downloads
 # ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
@@ -30,6 +31,7 @@ SEARCH_ENGINE = config.get("BROWSER", "search_engine", fallback="duckduckgo")
 SEARCH_ENGINES = {
     "duckduckgo": "https://duckduckgo.com/?q={}",
     "google":     "https://www.google.com/search?q={}",
+    "bing":       "https://www.bing.com/search?q={}",
 }
 
 
@@ -74,6 +76,7 @@ class TunnelFoxBrowser(QMainWindow):
 
         self.setWindowTitle(APP_DISGUISE)
         self.resize(1280, 900)
+        self._tunnel_warned = False
 
         nav = QToolBar("Navigation")
         nav.setMovable(False)
@@ -83,16 +86,17 @@ class TunnelFoxBrowser(QMainWindow):
         self.btn_forward = QAction("▶", self)
         self.btn_reload  = QAction("↻", self)
         self.btn_home    = QAction("⌂", self)
+        self.btn_stop    = QAction("✕", self)
 
         self.btn_back.triggered.connect(lambda: self.view.back())
         self.btn_forward.triggered.connect(lambda: self.view.forward())
         self.btn_reload.triggered.connect(lambda: self.view.reload())
         self.btn_home.triggered.connect(self._go_home)
+        self.btn_stop.triggered.connect(lambda: self.view.stop())
 
-        nav.addAction(self.btn_back)
-        nav.addAction(self.btn_forward)
-        nav.addAction(self.btn_reload)
-        nav.addAction(self.btn_home)
+        for btn in [self.btn_back, self.btn_forward, self.btn_reload,
+                    self.btn_stop, self.btn_home]:
+            nav.addAction(btn)
 
         self.address_bar = QLineEdit()
         self.address_bar.setPlaceholderText("Enter URL or search…")
@@ -104,11 +108,19 @@ class TunnelFoxBrowser(QMainWindow):
         self.progress.setTextVisible(False)
         self.progress.hide()
 
+        self.profile = QWebEngineProfile("TunnelFoxSession", self)
         self.view = QWebEngineView()
         self.view.urlChanged.connect(lambda u: self.address_bar.setText(u.toString()))
         self.view.loadStarted.connect(lambda: self.progress.show())
-        self.view.loadFinished.connect(lambda: self.progress.hide())
+        self.view.loadFinished.connect(lambda ok: self.progress.hide())
         self.view.loadProgress.connect(self.progress.setValue)
+        self.profile.downloadRequested.connect(self._on_download_requested)
+
+        self.status = QStatusBar()
+        self.setStatusBar(self.status)
+        self.tunnel_indicator = QLabel("● Tunnel")
+        self.tunnel_indicator.setStyleSheet("color:green;")
+        self.status.addPermanentWidget(self.tunnel_indicator)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -118,6 +130,10 @@ class TunnelFoxBrowser(QMainWindow):
         layout.addWidget(self.progress)
         layout.addWidget(self.view)
 
+        self._tunnel_timer = QTimer(self)
+        self._tunnel_timer.timeout.connect(self._check_tunnel_health)
+        self._tunnel_timer.start(15000)
+
         self.view.load(QUrl(TARGET_URL))
 
     def _navigate_from_bar(self):
@@ -125,6 +141,26 @@ class TunnelFoxBrowser(QMainWindow):
 
     def _go_home(self):
         self.view.load(QUrl(TARGET_URL))
+
+    def _on_download_requested(self, item):
+        path, _ = QFileDialog.getSaveFileName(self, "Save", item.suggestedFileName())
+        if path:
+            item.setDownloadDirectory(os.path.dirname(path))
+            item.setDownloadFileName(os.path.basename(path))
+            item.accept()
+
+    def _check_tunnel_health(self):
+        if is_tunnel_active():
+            self.tunnel_indicator.setText("● Tunnel")
+            self.tunnel_indicator.setStyleSheet("color:green;")
+            self._tunnel_warned = False
+        else:
+            self.tunnel_indicator.setText("● Tunnel ✗")
+            self.tunnel_indicator.setStyleSheet("color:red;")
+            if not self._tunnel_warned:
+                self._tunnel_warned = True
+                QMessageBox.warning(self, "Tunnel Disconnected",
+                    "The SOCKS5 tunnel is down. Restart the tunnel.")
 
 
 if __name__ == "__main__":
