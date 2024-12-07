@@ -1,20 +1,23 @@
 import sys
 import os
+import json
 import socket
 import configparser
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
     QLineEdit, QToolBar, QAction, QMessageBox,
-    QProgressBar, QStatusBar, QLabel, QFileDialog
+    QProgressBar, QStatusBar, QLabel, QFileDialog,
+    QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox
 )
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
-from PyQt5.QtCore import QUrl, QSize, QTimer
+from PyQt5.QtCore import QUrl, QSize, QTimer, Qt
 
 # ============================================================
-#  TunnelFox v0.5  —  Tunnel health monitor + downloads
+#  TunnelFox v0.6  —  Bookmarks
 # ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
@@ -27,6 +30,9 @@ APP_DISGUISE  = config.get("BROWSER", "app_name",      fallback="NotepadHelper")
 PROXY_HOST    = "127.0.0.1"
 PROXY_PORT    = config.getint("BROWSER", "local_port", fallback=1080)
 SEARCH_ENGINE = config.get("BROWSER", "search_engine", fallback="duckduckgo")
+
+BOOKMARKS_PATH = Path.home() / ".tunnelfox" / "bookmarks.json"
+BOOKMARKS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 SEARCH_ENGINES = {
     "duckduckgo": "https://duckduckgo.com/?q={}",
@@ -82,20 +88,22 @@ class TunnelFoxBrowser(QMainWindow):
         nav.setMovable(False)
         self.addToolBar(nav)
 
-        self.btn_back    = QAction("◀", self)
-        self.btn_forward = QAction("▶", self)
-        self.btn_reload  = QAction("↻", self)
-        self.btn_home    = QAction("⌂", self)
-        self.btn_stop    = QAction("✕", self)
+        self.btn_back     = QAction("◀", self)
+        self.btn_forward  = QAction("▶", self)
+        self.btn_reload   = QAction("↻", self)
+        self.btn_home     = QAction("⌂", self)
+        self.btn_stop     = QAction("✕", self)
+        self.btn_bookmark = QAction("☆", self)
 
         self.btn_back.triggered.connect(lambda: self.view.back())
         self.btn_forward.triggered.connect(lambda: self.view.forward())
         self.btn_reload.triggered.connect(lambda: self.view.reload())
         self.btn_home.triggered.connect(self._go_home)
         self.btn_stop.triggered.connect(lambda: self.view.stop())
+        self.btn_bookmark.triggered.connect(self._toggle_bookmark)
 
         for btn in [self.btn_back, self.btn_forward, self.btn_reload,
-                    self.btn_stop, self.btn_home]:
+                    self.btn_stop, self.btn_home, self.btn_bookmark]:
             nav.addAction(btn)
 
         self.address_bar = QLineEdit()
@@ -110,7 +118,7 @@ class TunnelFoxBrowser(QMainWindow):
 
         self.profile = QWebEngineProfile("TunnelFoxSession", self)
         self.view = QWebEngineView()
-        self.view.urlChanged.connect(lambda u: self.address_bar.setText(u.toString()))
+        self.view.urlChanged.connect(self._on_url_changed)
         self.view.loadStarted.connect(lambda: self.progress.show())
         self.view.loadFinished.connect(lambda ok: self.progress.hide())
         self.view.loadProgress.connect(self.progress.setValue)
@@ -136,11 +144,47 @@ class TunnelFoxBrowser(QMainWindow):
 
         self.view.load(QUrl(TARGET_URL))
 
+    def _on_url_changed(self, qurl):
+        url = qurl.toString()
+        self.address_bar.setText(url)
+        bookmarks = self._load_bookmarks()
+        self.btn_bookmark.setText("★" if any(b["url"] == url for b in bookmarks) else "☆")
+
     def _navigate_from_bar(self):
         self.view.load(QUrl(normalise_url(self.address_bar.text())))
 
     def _go_home(self):
         self.view.load(QUrl(TARGET_URL))
+
+    def _load_bookmarks(self):
+        try:
+            return json.loads(BOOKMARKS_PATH.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
+
+    def _save_bookmarks(self, bookmarks):
+        BOOKMARKS_PATH.write_text(
+            json.dumps(bookmarks, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def _toggle_bookmark(self):
+        url = self.view.url().toString()
+        if not url or url.startswith("about:"):
+            return
+        bookmarks = self._load_bookmarks()
+        existing = next((b for b in bookmarks if b["url"] == url), None)
+        if existing:
+            bookmarks = [b for b in bookmarks if b["url"] != url]
+            self.btn_bookmark.setText("☆")
+            self.status.showMessage("Bookmark removed.", 2000)
+        else:
+            bookmarks.append({
+                "url": url,
+                "title": self.view.title() or url,
+                "added": datetime.now().isoformat(),
+            })
+            self.btn_bookmark.setText("★")
+            self.status.showMessage("Bookmark saved.", 2000)
+        self._save_bookmarks(bookmarks)
 
     def _on_download_requested(self, item):
         path, _ = QFileDialog.getSaveFileName(self, "Save", item.suggestedFileName())
