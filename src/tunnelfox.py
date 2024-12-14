@@ -8,16 +8,17 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QLineEdit, QToolBar, QAction, QMessageBox,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLineEdit, QPushButton, QToolBar, QAction, QMessageBox,
     QProgressBar, QStatusBar, QLabel, QFileDialog,
-    QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox
+    QDialog, QListWidget, QListWidgetItem, QDialogButtonBox, QShortcut
 )
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile, QWebEnginePage
 from PyQt5.QtCore import QUrl, QSize, QTimer, Qt
+from PyQt5.QtGui import QKeySequence
 
 # ============================================================
-#  TunnelFox v0.6  —  Bookmarks
+#  TunnelFox v0.7  —  Find in page, zoom, mute, shortcuts
 # ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
@@ -38,6 +39,7 @@ SEARCH_ENGINES = {
     "duckduckgo": "https://duckduckgo.com/?q={}",
     "google":     "https://www.google.com/search?q={}",
     "bing":       "https://www.bing.com/search?q={}",
+    "brave":      "https://search.brave.com/search?q={}",
 }
 
 
@@ -94,6 +96,7 @@ class TunnelFoxBrowser(QMainWindow):
         self.btn_home     = QAction("⌂", self)
         self.btn_stop     = QAction("✕", self)
         self.btn_bookmark = QAction("☆", self)
+        self.btn_mute     = QAction("🔊", self)
 
         self.btn_back.triggered.connect(lambda: self.view.back())
         self.btn_forward.triggered.connect(lambda: self.view.forward())
@@ -101,6 +104,7 @@ class TunnelFoxBrowser(QMainWindow):
         self.btn_home.triggered.connect(self._go_home)
         self.btn_stop.triggered.connect(lambda: self.view.stop())
         self.btn_bookmark.triggered.connect(self._toggle_bookmark)
+        self.btn_mute.triggered.connect(self._toggle_mute)
 
         for btn in [self.btn_back, self.btn_forward, self.btn_reload,
                     self.btn_stop, self.btn_home, self.btn_bookmark]:
@@ -111,13 +115,41 @@ class TunnelFoxBrowser(QMainWindow):
         self.address_bar.returnPressed.connect(self._navigate_from_bar)
         nav.addWidget(self.address_bar)
 
+        self.zoom_label = QLabel("100%")
+        nav.addWidget(self.zoom_label)
+        nav.addAction(self.btn_mute)
+
         self.progress = QProgressBar()
         self.progress.setMaximumHeight(3)
         self.progress.setTextVisible(False)
         self.progress.hide()
 
+        # Find bar
+        self.find_bar = QWidget()
+        find_layout = QHBoxLayout(self.find_bar)
+        find_layout.setContentsMargins(8, 4, 8, 4)
+        self.find_input = QLineEdit()
+        self.find_input.setPlaceholderText("Find in page…")
+        self.find_input.setFixedWidth(220)
+        self.find_input.textChanged.connect(lambda t: self._find_text(True))
+        btn_next  = QPushButton("▼")
+        btn_prev  = QPushButton("▲")
+        btn_close = QPushButton("✕")
+        btn_next.clicked.connect(lambda: self._find_text(True))
+        btn_prev.clicked.connect(lambda: self._find_text(False))
+        btn_close.clicked.connect(self._hide_find_bar)
+        find_layout.addWidget(QLabel("Find:"))
+        find_layout.addWidget(self.find_input)
+        find_layout.addWidget(btn_next)
+        find_layout.addWidget(btn_prev)
+        find_layout.addStretch()
+        find_layout.addWidget(btn_close)
+        self.find_bar.hide()
+
         self.profile = QWebEngineProfile("TunnelFoxSession", self)
+        self.page = QWebEnginePage(self.profile)
         self.view = QWebEngineView()
+        self.view.setPage(self.page)
         self.view.urlChanged.connect(self._on_url_changed)
         self.view.loadStarted.connect(lambda: self.progress.show())
         self.view.loadFinished.connect(lambda ok: self.progress.hide())
@@ -136,11 +168,19 @@ class TunnelFoxBrowser(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.progress)
+        layout.addWidget(self.find_bar)
         layout.addWidget(self.view)
 
         self._tunnel_timer = QTimer(self)
         self._tunnel_timer.timeout.connect(self._check_tunnel_health)
         self._tunnel_timer.start(15000)
+
+        QShortcut(QKeySequence("Ctrl+F"), self, self._show_find_bar)
+        QShortcut(QKeySequence("Ctrl++"), self, self._zoom_in)
+        QShortcut(QKeySequence("Ctrl+-"), self, self._zoom_out)
+        QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_reset)
+        QShortcut(QKeySequence("F5"),     self, self.view.reload)
+        QShortcut(QKeySequence("Escape"), self, self._on_escape)
 
         self.view.load(QUrl(TARGET_URL))
 
@@ -155,6 +195,47 @@ class TunnelFoxBrowser(QMainWindow):
 
     def _go_home(self):
         self.view.load(QUrl(TARGET_URL))
+
+    def _on_escape(self):
+        if self.find_bar.isVisible():
+            self._hide_find_bar()
+        else:
+            self.view.stop()
+
+    def _show_find_bar(self):
+        self.find_bar.show()
+        self.find_input.setFocus()
+
+    def _hide_find_bar(self):
+        self.find_bar.hide()
+        self.page.findText("")
+        self.view.setFocus()
+
+    def _find_text(self, forward=True):
+        text = self.find_input.text()
+        flags = QWebEnginePage.FindFlags()
+        if not forward:
+            flags |= QWebEnginePage.FindBackward
+        self.page.findText(text, flags)
+
+    def _zoom_in(self):
+        f = min(5.0, self.view.zoomFactor() + 0.1)
+        self.view.setZoomFactor(f)
+        self.zoom_label.setText(f"{int(f*100)}%")
+
+    def _zoom_out(self):
+        f = max(0.25, self.view.zoomFactor() - 0.1)
+        self.view.setZoomFactor(f)
+        self.zoom_label.setText(f"{int(f*100)}%")
+
+    def _zoom_reset(self):
+        self.view.setZoomFactor(1.0)
+        self.zoom_label.setText("100%")
+
+    def _toggle_mute(self):
+        muted = self.page.isAudioMuted()
+        self.page.setAudioMuted(not muted)
+        self.btn_mute.setText("🔊" if muted else "🔇")
 
     def _load_bookmarks(self):
         try:
@@ -171,19 +252,13 @@ class TunnelFoxBrowser(QMainWindow):
         if not url or url.startswith("about:"):
             return
         bookmarks = self._load_bookmarks()
-        existing = next((b for b in bookmarks if b["url"] == url), None)
-        if existing:
+        if any(b["url"] == url for b in bookmarks):
             bookmarks = [b for b in bookmarks if b["url"] != url]
             self.btn_bookmark.setText("☆")
-            self.status.showMessage("Bookmark removed.", 2000)
         else:
-            bookmarks.append({
-                "url": url,
-                "title": self.view.title() or url,
-                "added": datetime.now().isoformat(),
-            })
+            bookmarks.append({"url": url, "title": self.view.title() or url,
+                               "added": datetime.now().isoformat()})
             self.btn_bookmark.setText("★")
-            self.status.showMessage("Bookmark saved.", 2000)
         self._save_bookmarks(bookmarks)
 
     def _on_download_requested(self, item):
@@ -204,7 +279,7 @@ class TunnelFoxBrowser(QMainWindow):
             if not self._tunnel_warned:
                 self._tunnel_warned = True
                 QMessageBox.warning(self, "Tunnel Disconnected",
-                    "The SOCKS5 tunnel is down. Restart the tunnel.")
+                    "The SOCKS5 tunnel is down.")
 
 
 if __name__ == "__main__":
