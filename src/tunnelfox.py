@@ -7,18 +7,19 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLineEdit, QPushButton, QToolBar, QAction, QMessageBox,
+    QLineEdit, QPushButton, QToolBar, QMessageBox,
     QProgressBar, QStatusBar, QLabel, QFileDialog,
-    QDialog, QListWidget, QListWidgetItem, QDialogButtonBox, QShortcut
+    QListWidget, QListWidgetItem, QDialogButtonBox
 )
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile, QWebEnginePage
-from PyQt5.QtCore import QUrl, QSize, QTimer, Qt
-from PyQt5.QtGui import QKeySequence
+from PyQt6.QtGui import QAction, QShortcut, QKeySequence
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEngineSettings
+from PyQt6.QtCore import QUrl, QSize, QTimer, Qt
 
 # ============================================================
-#  TunnelFox v0.7  —  Find in page, zoom, mute, shortcuts
+#  TunnelFox v0.8  —  Migrated to PyQt6 (Chrome 120 engine)
 # ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
@@ -26,7 +27,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
 config = configparser.ConfigParser()
 config.read(CONFIG_PATH)
 
-TARGET_URL    = config.get("BROWSER", "home_url",      fallback="https://google.com")
+TARGET_URL    = config.get("BROWSER", "home_url",      fallback="https://claude.ai")
 APP_DISGUISE  = config.get("BROWSER", "app_name",      fallback="NotepadHelper")
 PROXY_HOST    = "127.0.0.1"
 PROXY_PORT    = config.getint("BROWSER", "local_port", fallback=1080)
@@ -44,11 +45,12 @@ SEARCH_ENGINES = {
 
 
 def configure_proxy_early():
-    sys.argv += [
-        f"--proxy-server=socks5://{PROXY_HOST}:{PROXY_PORT}",
-        "--no-first-run",
-        "--no-default-browser-check",
-    ]
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        f"--proxy-server=socks5://{PROXY_HOST}:{PROXY_PORT} "
+        "--no-first-run --no-default-browser-check "
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
 
 
 def is_tunnel_active():
@@ -124,7 +126,6 @@ class TunnelFoxBrowser(QMainWindow):
         self.progress.setTextVisible(False)
         self.progress.hide()
 
-        # Find bar
         self.find_bar = QWidget()
         find_layout = QHBoxLayout(self.find_bar)
         find_layout.setContentsMargins(8, 4, 8, 4)
@@ -147,6 +148,9 @@ class TunnelFoxBrowser(QMainWindow):
         self.find_bar.hide()
 
         self.profile = QWebEngineProfile("TunnelFoxSession", self)
+        self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+        self.profile.setPersistentCookiesPolicy(
+            QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         self.page = QWebEnginePage(self.profile)
         self.view = QWebEngineView()
         self.view.setPage(self.page)
@@ -213,10 +217,10 @@ class TunnelFoxBrowser(QMainWindow):
 
     def _find_text(self, forward=True):
         text = self.find_input.text()
-        flags = QWebEnginePage.FindFlags()
-        if not forward:
-            flags |= QWebEnginePage.FindBackward
-        self.page.findText(text, flags)
+        if forward:
+            self.page.findText(text)
+        else:
+            self.page.findText(text, QWebEnginePage.FindFlag.FindBackward)
 
     def _zoom_in(self):
         f = min(5.0, self.view.zoomFactor() + 0.1)
@@ -283,8 +287,9 @@ class TunnelFoxBrowser(QMainWindow):
 
 
 if __name__ == "__main__":
+    os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
     configure_proxy_early()
     app = QApplication(sys.argv)
     window = TunnelFoxBrowser()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
