@@ -1,0 +1,164 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build (Windows)
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python ──────────────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # ── 3. Dependencies ────────────────────────────────────────────────
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 4. Create assets folder & version file ─────────────────────────
+      #  PyInstaller evals this file directly — any leading whitespace on
+      #  any line causes a SyntaxError.  Writing via Python script is the
+      #  only safe method; PowerShell heredocs always indent the content.
+      - name: Generate version file
+        shell: python
+        run: |
+          import os, pathlib
+          os.makedirs("assets", exist_ok=True)
+          content = (
+            "VSVersionInfo(\n"
+            "ffi=FixedFileInfo(\n"
+            "filevers=(2, 0, 0, 0),\n"
+            "prodvers=(2, 0, 0, 0),\n"
+            "mask=0x3f,\n"
+            "flags=0x0,\n"
+            "OS=0x40004,\n"
+            "fileType=0x1,\n"
+            "subtype=0x0,\n"
+            "date=(0, 0)\n"
+            "),\n"
+            "kids=[\n"
+            "StringFileInfo(\n"
+            "[StringTable(\n"
+            "'040904B0',\n"
+            "[StringStruct('CompanyName', 'Private'),\n"
+            "StringStruct('FileDescription', 'Notepad Helper'),\n"
+            "StringStruct('FileVersion', '2.0.0.0'),\n"
+            "StringStruct('InternalName', 'NotepadHelper'),\n"
+            "StringStruct('OriginalFilename', 'NotepadHelper.exe'),\n"
+            "StringStruct('ProductName', 'Notepad Helper'),\n"
+            "StringStruct('ProductVersion', '2.0.0.0')]\n"
+            ")]\n"
+            "),\n"
+            "VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
+            "]\n"
+            ")\n"
+          )
+          pathlib.Path("assets/file_version_info.txt").write_text(content, encoding="utf-8")
+          print("Version file written successfully.")
+
+      # ── 5. Build ───────────────────────────────────────────────────────
+      #  --contents-directory is intentionally omitted.
+      #  PyQtWebEngine's QtWebEngineProcess.exe resolves python3XX.dll
+      #  relative to its own directory; relocating DLLs into a
+      #  subdirectory causes "Failed to start embedded python interpreter".
+      #
+      #  --add-data bundles config.ini so the exe can read it at runtime.
+      #  Source file is at .\src\tunnelfox.py.
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --onedir `
+            --windowed `
+            --name="NotepadHelper" `
+            --distpath=".\dist" `
+            --workpath=".\build_temp" `
+            --version-file=".\assets\file_version_info.txt" `
+            --collect-all PyQt6 `
+            --collect-all PyQt6-WebEngine `
+            --hidden-import="PyQt6.QtWebEngineWidgets" `
+            --hidden-import="PyQt6.QtWebEngineCore" `
+            --hidden-import="PyQt6.QtWebChannel" `
+            --hidden-import="PyQt6.QtNetwork" `
+            --hidden-import="PyQt6.QtPrintSupport" `
+            --add-data="config.ini;." `
+            .\src\tunnelfox.py
+
+      # ── 6. Verify output ───────────────────────────────────────────────
+      - name: Verify executable exists
+        run: |
+          if (!(Test-Path ".\dist\NotepadHelper\NotepadHelper.exe")) {
+            Write-Error "Build failed: NotepadHelper.exe not found"
+            exit 1
+          }
+          Write-Output "Build verified: NotepadHelper.exe present"
+
+      # ── 7. Sanitize ref name ───────────────────────────────────────────
+      #  github.ref_name contains slashes on PRs (e.g. "1/merge") and on
+      #  branch names, making it an invalid Windows file/artifact name.
+      #  Replace every / and \ with - and expose as SAFE_REF env variable.
+      - name: Set safe release name
+        run: |
+          $safe = "${{ github.ref_name }}" -replace '[/\\]', '-'
+          echo "SAFE_REF=$safe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # ── 8. Package ─────────────────────────────────────────────────────
+      #  config.ini is already bundled inside the exe folder by --add-data.
+      #  Also ship the helper scripts so users can launch/kill the tunnel.
+      - name: Package release archive
+        run: |
+          Copy-Item start_fox.bat .\dist\NotepadHelper\
+          Copy-Item kill_fox.bat  .\dist\NotepadHelper\
+          Compress-Archive `
+            -Path ".\dist\NotepadHelper\*" `
+            -DestinationPath ".\TunnelFox-${{ env.SAFE_REF }}-windows.zip"
+
+      # ── 9. Upload build artifact (every push) ──────────────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TunnelFox-${{ env.SAFE_REF }}
+          path: TunnelFox-${{ env.SAFE_REF }}-windows.zip
+          retention-days: 14
+
+      # ── 10. Create GitHub Release (tags only) ──────────────────────────
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: TunnelFox ${{ github.ref_name }}
+          body: |
+            ## TunnelFox ${{ github.ref_name }}
+
+            ### Installation
+            1. Download and extract `TunnelFox-${{ env.SAFE_REF }}-windows.zip`
+            2. Edit `config.ini` — set `vm_ip`, `key_path`, and `vm_user`
+            3. Run `start_fox.bat`
+
+            ### Contents
+            | File | Purpose |
+            |---|---|
+            | `NotepadHelper.exe` | Application binary |
+            | `config.ini` | Connection & browser settings |
+            | `start_fox.bat` | Launch SSH tunnel + browser |
+            | `kill_fox.bat` | Teardown all sessions |
+
+            > **Note:** Do not move `NotepadHelper.exe` out of its folder.
+            > Keep `config.ini` in the same directory as `start_fox.bat`.
+          files: TunnelFox-${{ env.SAFE_REF }}-windows.zip
+          draft: false
+          prerelease: false
