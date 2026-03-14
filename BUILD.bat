@@ -25,12 +25,12 @@ for /f "usebackq tokens=1,* delims= = " %%A in (".\config.ini") do (
 )
 
 :: --- Clean ---
-echo [1/4] Cleaning previous artifacts...
+echo [1/5] Cleaning previous artifacts...
 if exist ".\dist"       rd /s /q ".\dist"
 if exist ".\build_temp" rd /s /q ".\build_temp"
 
 :: --- Ensure assets folder + version file exist ---
-echo [2/4] Preparing assets...
+echo [2/5] Preparing assets...
 if not exist ".\assets" mkdir ".\assets"
 if not exist ".\assets\file_version_info.txt" (
     set "VF=.\assets\file_version_info.txt"
@@ -65,11 +65,11 @@ if not exist ".\assets\file_version_info.txt" (
 )
 
 :: --- Validate environment ---
-echo [3/4] Validating environment...
+echo [3/5] Validating environment...
 
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo  [ERROR] Python not found. Install Python 3.10+ and add to PATH.
+    echo  [ERROR] Python not found. Install Python 3.11+ and add to PATH.
     pause & exit /b 1
 )
 pyinstaller --version >nul 2>&1
@@ -84,8 +84,7 @@ if %errorlevel% neq 0 (
 )
 
 :: --- Build ---
-::  Source file is tunnelfox.py in the repo root (not .\src\)
-echo [4/4] Building (this takes 2-5 minutes)...
+echo [4/5] Building (this takes 2-5 minutes)...
 echo.
 
 pyinstaller ^
@@ -110,6 +109,15 @@ if %errorlevel% neq 0 (
     echo.
     echo  [ERROR] Build failed. See output above.
     pause & exit /b 1
+)
+
+:: --- Rename renderer process to blend in ---
+echo [5/5] Finalising distribution...
+if exist ".\dist\%APP_NAME%\QtWebEngineProcess.exe" (
+    ren ".\dist\%APP_NAME%\QtWebEngineProcess.exe" "%APP_NAME%_renderer.exe"
+    echo  [OK] QtWebEngineProcess.exe  ->  %APP_NAME%_renderer.exe
+) else (
+    echo  [WARN] QtWebEngineProcess.exe not found, skipping rename
 )
 
 echo.
