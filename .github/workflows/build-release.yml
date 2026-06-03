@@ -36,40 +36,45 @@ jobs:
       #  safe regardless of YAML indentation in the workflow file.
       - name: Generate version file
         run: |
-          $raw = @'
-          VSVersionInfo(
-          ffi=FixedFileInfo(
-          filevers=(2, 0, 0, 0),
-          prodvers=(2, 0, 0, 0),
-          mask=0x3f,
-          flags=0x0,
-          OS=0x40004,
-          fileType=0x1,
-          subtype=0x0,
-          date=(0, 0)
-          ),
-          kids=[
-          StringFileInfo(
-          [StringTable(
-          '040904B0',
-          [StringStruct('CompanyName', 'Private'),
-          StringStruct('FileDescription', 'Notepad Helper'),
-          StringStruct('FileVersion', '2.0.0.0'),
-          StringStruct('InternalName', 'NotepadHelper'),
-          StringStruct('OriginalFilename', 'NotepadHelper.exe'),
-          StringStruct('ProductName', 'Notepad Helper'),
-          StringStruct('ProductVersion', '2.0.0.0')]
-          )]
-          ),
-          VarFileInfo([VarStruct('Translation', [1033, 1200])])
-          ]
-          )
+          $pycode = @'
+import os
+import pathlib
+import textwrap
+os.makedirs("assets", exist_ok=True)
+content = textwrap.dedent("""
+VSVersionInfo(
+ffi=FixedFileInfo(
+filevers=(2, 0, 0, 0),
+prodvers=(2, 0, 0, 0),
+mask=0x3f,
+flags=0x0,
+OS=0x40004,
+fileType=0x1,
+subtype=0x0,
+date=(0, 0)
+),
+kids=[
+StringFileInfo(
+[StringTable(
+"040904B0",
+[StringStruct("CompanyName", "Private"),
+StringStruct("FileDescription", "Notepad Helper"),
+StringStruct("FileVersion", "2.0.0.0"),
+StringStruct("InternalName", "NotepadHelper"),
+StringStruct("OriginalFilename", "NotepadHelper.exe"),
+StringStruct("ProductName", "Notepad Helper"),
+StringStruct("ProductVersion", "2.0.0.0")]
+)]
+),
+VarFileInfo([VarStruct("Translation", [1033, 1200])])
+]
+)
+""").strip()
+pathlib.Path("assets/file_version_info.txt").write_text(content, encoding="utf-8")
+print("Version file written successfully.")
 '@
-          $content = ($raw -split "`n" | ForEach-Object { $_.TrimStart() }) -join "`n"
-          New-Item -ItemType Directory -Force -Path assets | Out-Null
-          $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-          [System.IO.File]::WriteAllText('assets/file_version_info.txt', $content, $utf8NoBom)
-          Write-Output 'Version file written successfully.'
+          $pycode = ($pycode -split "`n" | ForEach-Object { $_.TrimStart() }) -join "`n"
+          python -c $pycode
 
       # ── 5. Build ───────────────────────────────────────────────────────
       #  --contents-directory is intentionally omitted.
