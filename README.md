@@ -1,6 +1,8 @@
 # TunnelFox
 
-> Hardened, session-isolated desktop browser that routes all traffic through an SSH SOCKS5 tunnel.
+A simple secret browser for Windows.  
+Everything you do online goes through **your own server** so nobody else can see it.  
+It looks like a normal Notepad program.
 
 [![Build & Release](https://github.com/shanewas/tunnelfox/actions/workflows/build-release.yml/badge.svg)](https://github.com/shanewas/tunnelfox/actions/workflows/build-release.yml)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
@@ -9,216 +11,83 @@
 
 ---
 
-## Overview
+## Try It Right Now (Takes 2 Minutes)
 
-TunnelFox is a Windows desktop application that wraps Chromium (via PyQt6 WebEngine) in a controlled, memory-only session profile. All outbound network traffic is enforced through a SOCKS5 dynamic port forward established over SSH to a remote jump host — no persistent cookies, no disk cache, no DNS leaks.
+### What you need
+- Windows 10 or 11
+- A server you control (cheap VPS from DigitalOcean, Hetzner, Oracle free tier, etc.)
+- An SSH key file for that server **with no password**
 
-The browser binary is intentionally named `NotepadHelper.exe` for compatibility with EDR and enterprise policy environments.
+### Steps
+1. Go to the **Releases** page on GitHub and download the latest zip file.
+2. Unzip it anywhere.
+3. Open the folder and edit the file called `config.ini` using Notepad:
+   - `vm_ip` → put your server's IP address or name (example: 123.45.67.89)
+   - `key_path` → put the full path to your SSH key file (example: `C:\Users\You\Downloads\mykey.pem`)
+   - `vm_user` → your username on the server (usually `ubuntu` or `root`)
+4. Save the file.
+5. Double-click `start_fox.bat`
+   - A small black window appears (this is the secret tunnel)
+   - A normal-looking browser opens
+6. Browse anything you want. All traffic goes through your server.
 
----
+**Finished?** Double-click `kill_fox.bat` to close everything and clean up.
 
-## How It Works
+**Something wrong?** Double-click `tunnel-diagnose.bat` — it will tell you exactly what to fix.
 
-```
-[Windows Host]
-    │
-    ├── start_fox.bat
-    │     ├── ssh -D 1080 ──────────────────► [Oracle VM / Jump Host]
-    │     │                                        (encrypted tunnel)
-    │     └── NotepadHelper.exe
-    │           └── QWebEngineView (Chromium 120)
-    │                 └── QTWEBENGINE_CHROMIUM_FLAGS
-    │                       └── --proxy-server=socks5://127.0.0.1:1080
-    │                             └── All traffic exits via jump host
-    │
-    └── kill_fox.bat
-          └── Terminates browser + tunnel, flushes DNS cache
-```
-
-**Security properties:**
-- Memory-only HTTP cache — no data written to disk between sessions
-- No persistent cookies — session is fully isolated and discarded on close
-- Proxy enforced via `QTWEBENGINE_CHROMIUM_FLAGS` before `QApplication()` instantiation — the only method that reliably routes `QtWebEngineProcess.exe` renderer traffic through the tunnel (`QNetworkProxy` does not affect the renderer subprocess)
-- WebRTC restricted to public interfaces only, preventing local IP leakage
-- Browser binary disguised as `NotepadHelper.exe` for EDR and policy compatibility
-- Chromium sandbox disabled via `QTWEBENGINE_DISABLE_SANDBOX=1` for enterprise AV compatibility
+That's all. No installation. No extra programs needed after the first run.
 
 ---
 
-## Repository Structure
+## What This Actually Does (Super Simple)
 
-```
-tunnelfox/
-├── .github/
-│   └── workflows/
-│       └── build-release.yml   # CI/CD — auto build + GitHub Release on tag push
-├── src/
-│   └── tunnelfox.py            # Application source (PyQt6)
-├── BUILD.bat                   # Local build script (PyInstaller)
-├── start_fox.bat               # Launch: SSH tunnel → browser
-├── kill_fox.bat                # Teardown: browser → tunnel → DNS flush
-├── tunnel-diagnose.bat         # Diagnostics (SSH/key/SOCKS5/egress IP)
-├── diagnose_tunnel.py          # Python diagnostics helper
-├── config.ini                  # Runtime configuration (URL, port, app name)
-├── requirements.txt            # Python dependencies
-├── LICENSE
-├── IMPROVEMENT_IDEAS.md        # Reliability & enhancement roadmap
-└── .gitignore
-```
+- Hides your real location and what sites you visit.
+- Nothing is saved on your computer (no history, no cookies, no cache).
+- The program is named `NotepadHelper.exe` so work computers and security tools usually ignore it.
+- Uses a real encrypted SSH tunnel.
 
 ---
 
-## Prerequisites
+## Daily Use
 
-| Requirement | Notes |
-|-------------|-------|
-| Windows 10 / 11 (64-bit) | Required |
-| Python 3.11 – 3.13 | Must be added to PATH |
-| OpenSSH client | Bundled with Windows 10+ |
-| SSH private key | Ed25519 or RSA — **no passphrase** |
-| Remote jump host | Any SSH server supporting dynamic port forwarding |
+- `start_fox.bat` → start the secret browser
+- `kill_fox.bat` → shut everything down cleanly
+- Inside the browser you get normal tabs, bookmarks, downloads, etc.
+- Press `Ctrl+I` anytime to check "Is the tunnel actually working right now?"
 
 ---
 
-## Configuration
+## If You Want to Change the Starting Page
 
-All runtime settings are controlled via `config.ini`:
-
-```ini
-[CONNECTION]
-vm_ip=YOUR_SERVER_IP          ; Jump host IP or hostname
-key_path=C:\path\to\key.pem   ; Absolute path to private key (no passphrase)
-vm_user=ubuntu                ; SSH username on the jump host
-
-[BROWSER]
-app_name=NotepadHelper        ; Process and window name (disguise)
-home_url=https://claude.ai    ; Default home page
-local_port=1080               ; Local SOCKS5 proxy port
-```
-
-> **Security:** Never commit `key.pem` or any private key file. Both are excluded by `.gitignore` via `*.pem` and `*.key` patterns.
-
-The target URL and other browser settings can also be changed at runtime via the in-app **Settings** dialog (☰) without requiring a rebuild.
+Edit `config.ini` and change the `home_url` line.  
+Or just use the Settings button (☰) inside the browser.
 
 ---
 
-## Local Build
+## Building It Yourself (Only If You Want To)
 
-```bat
-pip install -r requirements.txt
-BUILD.bat
-```
+1. Install Python 3.11, 3.12 or 3.13 and add it to PATH.
+2. Run these two commands in the folder:
+   ```
+   pip install -r requirements.txt
+   BUILD.bat
+   ```
+3. The finished program appears in the `dist\NotepadHelper` folder.
 
-Output: `.\dist\NotepadHelper\NotepadHelper.exe`
-
-> **Important:** The entire `dist\NotepadHelper\` folder must be kept intact. `QtWebEngineProcess.exe` and all Qt DLLs resolve paths relative to the executable's directory. Moving `NotepadHelper.exe` out of the folder will cause it to fail at launch.
-
----
-
-## Automated Build (CI/CD)
-
-The included GitHub Actions workflow (`.github/workflows/build-release.yml`) automatically:
-
-1. Builds the executable on `windows-latest` using PyInstaller
-2. Packages the output with `start_fox.bat`, `kill_fox.bat`, and `config.ini`
-3. Uploads a build artifact on every push to `master`
-4. Creates a versioned GitHub Release when a `v*.*.*` tag is pushed
-
-To cut a release:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The release archive will be published as `TunnelFox-v1.0.0-windows.zip`.
+**Important:** Never move the .exe out of that folder or it will break.
 
 ---
 
-## Usage
+## Common Problems
 
-| Script | Action |
-|--------|--------|
-| `start_fox.bat` | Starts the SSH tunnel on port 1080, then launches the browser |
-| `kill_fox.bat` | Kills browser and tunnel processes, flushes Windows DNS cache |
-| `tunnel-diagnose.bat` | Runs diagnostics (checks SSH, key, real SOCKS5 connectivity, and egress IP) |
-| In-app status bar | Shows live "● Tunnel" + "Egress: <ip>" with refresh button. Auto-verifies on connect and after tunnel recovery. |
-| `BUILD.bat` | Compiles `src/tunnelfox.py` into `dist/NotepadHelper/` via PyInstaller |
-
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+L` | Focus address bar |
-| `Ctrl+F` | Find in page |
-| `Ctrl+D` | Bookmark current page |
-| `Ctrl+Shift+B` | Show bookmarks |
-| `Ctrl+Shift+H` | Show history |
-| `Ctrl++ / Ctrl+-` | Zoom in / out |
-| `Ctrl+0` | Reset zoom |
-| `Ctrl+P` | Save page as PDF |
-| `F5 / Ctrl+R` | Reload |
-| `F11` | Toggle fullscreen |
-| `F12` | Developer tools |
-| `Alt+← / Alt+→` | Navigate back / forward |
-| `Ctrl+Shift+Del` | Clear session data |
-| `Ctrl+N` | New clean session (fresh ephemeral window) |
-| `Ctrl+I` | Connection status / re-verify egress IP |
-| `Ctrl+J` | Downloads manager |
-| `Ctrl+Shift+P` | Command Palette — search & run actions, bookmarks, history, verify, new session, etc. |
-| `Ctrl+T` | New tab |
-| `Ctrl+W` | Close current tab |
-| (tabs) `Ctrl+Tab` / tab X | Multi-tab support |
-
----
-
-## Deploying to Another Machine
-
-No Python installation is required on target machines. Copy the following:
-
-```
-dist/NotepadHelper/     ← entire folder (do not flatten)
-start_fox.bat
-kill_fox.bat
-config.ini              ← update key_path for the new machine
-key.pem                 ← copy SSH key securely, never commit
-```
-
-Update `key_path` in `config.ini` to match the key location on the target machine. All other settings remain the same.
-
----
-
-## Known Constraints
-
-**No sandbox**
-`QTWEBENGINE_DISABLE_SANDBOX=1` is set globally for enterprise AV compatibility. Do not use TunnelFox to browse untrusted or arbitrary web content.
-
-**SSH key must have no passphrase**
-A passphrase causes `ssh.exe` to block on a terminal prompt that `start_fox.bat` cannot supply. Generate keys without a passphrase or strip the passphrase before use.
-
-**Google OAuth blocked in embedded browsers**
-Google detects and blocks OAuth flows initiated from embedded Chromium instances. Use email magic link login (available on claude.ai and other services) as an alternative.
-
-**Tunnel must be active before launch**
-TunnelFox performs a real SOCKS5 protocol verification (not just port check) on startup and during runtime health checks.
-As of recent improvements the browser no longer hard-crashes if the tunnel is missing — instead it shows a prominent bar with a "Start / Restart Tunnel" button and attempts to recover automatically when the tunnel comes up.
-Still recommended to launch via `start_fox.bat`. Use `tunnel-diagnose.bat` if you have trouble.
-
-**Folder structure must remain intact**
-Moving `NotepadHelper.exe` out of its distribution folder will break the Qt runtime. The entire `dist\NotepadHelper\` directory must be distributed together.
-
----
-
-## Future Work & Improvements
-
-See [IMPROVEMENT_IDEAS.md](IMPROVEMENT_IDEAS.md) for the broad roadmap.
-
-For the **next concrete, high-value, use-case-centric features** you can pick from right now (multi-tab, New Clean Session, Download Manager, richer Connection Status, Command Palette, profiles, SSH agent support, in-app diagnostics, etc.), see [NEXT_FEATURE_OPTIONS.md](NEXT_FEATURE_OPTIONS.md).
-
-The document breaks changes into quick wins, Phase 1 (high-impact reliability), and longer-term bets, with effort estimates and concrete implementation sketches.
+- "Tunnel not detected" → Run `tunnel-diagnose.bat`
+- Key has a password → Remove the password from your SSH key (or load it in Pageant)
+- Nothing happens when you double-click the .bat files → Make sure you edited `config.ini` correctly
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT. See the LICENSE file.
+
+Just edit `config.ini` with your own server details and run `start_fox.bat`. Done.
