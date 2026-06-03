@@ -1,93 +1,91 @@
 # TunnelFox
 
-A simple secret browser for Windows.  
-Everything you do online goes through **your own server** so nobody else can see it.  
-It looks like a normal Notepad program.
+TunnelFox is a Windows desktop application that provides a hardened, session-isolated web browser. All network traffic is routed through an SSH SOCKS5 tunnel to a remote jump host, ensuring no persistent local data and preventing local network observation of browsing activity. The executable is named NotepadHelper.exe to maintain compatibility with enterprise endpoint detection and response (EDR) systems and policy restrictions.
 
 [![Build & Release](https://github.com/shanewas/tunnelfox/actions/workflows/build-release.yml/badge.svg)](https://github.com/shanewas/tunnelfox/actions/workflows/build-release.yml)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
 ![Python](https://img.shields.io/badge/python-3.11--3.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
----
+## Getting Started
 
-## Try It Right Now (Takes 2 Minutes)
+### Prerequisites
 
-### What you need
-- Windows 10 or 11
-- A server you control (cheap VPS from DigitalOcean, Hetzner, Oracle free tier, etc.)
-- An SSH key file for that server **with no password**
+- A computer running Windows 10 or Windows 11 (64-bit).
+- A remote server (such as a virtual private server) that supports SSH access and dynamic port forwarding.
+- An SSH private key file corresponding to an account on the remote server. The key must not be protected by a passphrase.
+- (Optional) Python 3.11 or later, if building from source.
 
-### Steps
-1. Go to the **Releases** page on GitHub and download the latest zip file.
-2. Unzip it anywhere.
-3. Open the folder and edit the file called `config.ini` using Notepad:
-   - `vm_ip` → put your server's IP address or name (example: 123.45.67.89)
-   - `key_path` → put the full path to your SSH key file (example: `C:\Users\You\Downloads\mykey.pem`)
-   - `vm_user` → your username on the server (usually `ubuntu` or `root`)
-4. Save the file.
-5. Double-click `start_fox.bat`
-   - A small black window appears (this is the secret tunnel)
-   - A normal-looking browser opens
-6. Browse anything you want. All traffic goes through your server.
+### Quick Evaluation
 
-**Finished?** Double-click `kill_fox.bat` to close everything and clean up.
+To set up and test TunnelFox quickly:
 
-**Something wrong?** Double-click `tunnel-diagnose.bat` — it will tell you exactly what to fix.
+1. Navigate to the [Releases](https://github.com/shanewas/tunnelfox/releases) page of this repository and download the most recent Windows archive (for example, `TunnelFox-....-windows.zip`).
 
-That's all. No installation. No extra programs needed after the first run.
+2. Extract the archive to a convenient location on your computer.
 
----
+3. Open the extracted folder and edit the file `config.ini` using a text editor such as Notepad. Update the following values under the `[CONNECTION]` section with details for your remote server:
+   - `vm_ip`: The IP address or hostname of your remote server.
+   - `key_path`: The full local path to your SSH private key file (for example, `C:\Users\YourName\Downloads\mykey.pem`).
+   - `vm_user`: The username for the SSH account on the remote server (commonly `ubuntu` or `root`).
 
-## What This Actually Does (Super Simple)
+   Save the file after making these changes. Do not commit your private key or modified configuration containing sensitive paths.
 
-- Hides your real location and what sites you visit.
-- Nothing is saved on your computer (no history, no cookies, no cache).
-- The program is named `NotepadHelper.exe` so work computers and security tools usually ignore it.
-- Uses a real encrypted SSH tunnel.
+4. Double-click the file `start_fox.bat` to launch the application.
+   - A command window will appear briefly while the SSH tunnel is established.
+   - The TunnelFox browser window will then open. All traffic from this browser instance is directed through the configured tunnel.
 
----
+5. Use the browser as needed. Features such as tabbed browsing, bookmarks, and a command palette (`Ctrl+Shift+P`) are available.
 
-## Daily Use
+6. When finished, double-click `kill_fox.bat` to terminate the browser, close the tunnel, and flush the local DNS cache.
 
-- `start_fox.bat` → start the secret browser
-- `kill_fox.bat` → shut everything down cleanly
-- Inside the browser you get normal tabs, bookmarks, downloads, etc.
-- Press `Ctrl+I` anytime to check "Is the tunnel actually working right now?"
+If the application does not start as expected, double-click `tunnel-diagnose.bat`. This script performs checks on SSH availability, the private key file, SOCKS5 proxy connectivity, and egress IP address, and provides guidance on common configuration issues.
 
----
+No additional software is required on the target machine beyond the contents of the archive and a properly configured `config.ini`.
 
-## If You Want to Change the Starting Page
+## Configuration
 
-Edit `config.ini` and change the `home_url` line.  
-Or just use the Settings button (☰) inside the browser.
+Runtime behavior is controlled by the `config.ini` file located in the application directory. The `[CONNECTION]` section specifies the remote server and authentication details. The `[BROWSER]` section controls application appearance and default behavior, such as the initial home page.
 
----
+Changes to browser settings (for example, the home URL) may also be made at runtime through the in-application Settings menu without rebuilding the executable.
 
-## Building It Yourself (Only If You Want To)
+**Important:** Private key files must never be included in version control. The repository `.gitignore` excludes common key file extensions.
 
-1. Install Python 3.11, 3.12 or 3.13 and add it to PATH.
-2. Run these two commands in the folder:
+## Building from Source
+
+If a pre-built release is not suitable, TunnelFox may be built from source on a Windows system with Python 3.11 or later installed and added to the system PATH:
+
+1. Clone the repository or download the source archive.
+2. Open a command prompt in the repository root directory.
+3. Execute the following commands:
+
    ```
    pip install -r requirements.txt
    BUILD.bat
    ```
-3. The finished program appears in the `dist\NotepadHelper` folder.
 
-**Important:** Never move the .exe out of that folder or it will break.
+The resulting executable and supporting files will be located in the `dist\NotepadHelper` directory. The entire contents of this directory must be kept together; relocating the primary executable will prevent the application from starting.
 
----
+## Additional Information
 
-## Common Problems
+### Daily Operation
 
-- "Tunnel not detected" → Run `tunnel-diagnose.bat`
-- Key has a password → Remove the password from your SSH key (or load it in Pageant)
-- Nothing happens when you double-click the .bat files → Make sure you edited `config.ini` correctly
+- `start_fox.bat`: Establishes the SSH tunnel and launches the browser.
+- `kill_fox.bat`: Terminates the browser and tunnel processes and clears the local DNS cache.
+- `tunnel-diagnose.bat`: Assists with troubleshooting SSH connectivity, key configuration, and tunnel functionality.
 
----
+The in-application interface provides standard browser controls along with TunnelFox-specific features, including a live tunnel status indicator and egress IP verification.
+
+### Limitations
+
+- The Chromium sandbox is disabled (`QTWEBENGINE_DISABLE_SANDBOX=1`) to support compatibility with certain enterprise security software. TunnelFox is not intended for browsing untrusted content.
+- SSH keys used with the application must not require a passphrase, as interactive prompts cannot be handled by the launcher scripts.
+- Certain authentication flows (for example, Google OAuth) may be restricted within embedded browser environments. Alternative login methods, such as email magic links, are recommended where applicable.
+
+### Deployment to Additional Systems
+
+The pre-built archive requires no Python installation on the destination machine. Copy the full `dist\NotepadHelper` directory along with `start_fox.bat`, `kill_fox.bat`, `tunnel-diagnose.bat`, and a `config.ini` file configured for the target environment. Update the `key_path` value in `config.ini` to reflect the location of the SSH key on the new system.
 
 ## License
 
-MIT. See the LICENSE file.
-
-Just edit `config.ini` with your own server details and run `start_fox.bat`. Done.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
