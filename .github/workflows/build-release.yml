@@ -67,7 +67,8 @@ VarFileInfo([VarStruct('Translation', [1033, 1200])])
 '@
           $content = ($raw -split "`n" | ForEach-Object { $_.TrimStart() }) -join "`n"
           New-Item -ItemType Directory -Force -Path assets | Out-Null
-          [System.IO.File]::WriteAllText('assets/file_version_info.txt', $content, [System.Text.Encoding]::UTF8)
+          $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText('assets/file_version_info.txt', $content, $utf8NoBom)
           Write-Output 'Version file written successfully.'
 
       # ── 5. Build ───────────────────────────────────────────────────────
