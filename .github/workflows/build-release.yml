@@ -141,9 +141,7 @@ VarFileInfo([VarStruct('Translation', [1033, 1200])])
           Copy-Item kill_fox.bat  .\dist\NotepadHelper\
           Copy-Item tunnel-diagnose.bat .\dist\NotepadHelper\
           Copy-Item diagnose_tunnel.py  .\dist\NotepadHelper\
-          Compress-Archive `
-            -Path ".\dist\NotepadHelper\*" `
-            -DestinationPath ".\TunnelFox-${{ env.SAFE_REF }}-windows.zip"
+          Compress-Archive -Path ".\dist\NotepadHelper\*" -DestinationPath ".\TunnelFox-${{ env.SAFE_REF }}-windows.zip"
 
       # ── 9. Upload build artifact (every push) ──────────────────────────
       - name: Upload build artifact
