@@ -1,0 +1,21 @@
+# Auto detect text files and normalize to LF
+* text=auto
+
+# Windows batch and configs: CRLF
+*.bat text eol=crlf
+*.ini text eol=crlf
+*.txt text eol=crlf
+
+# Python and others: LF
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+
+# Binary
+*.exe binary
+*.dll binary
+*.pyd binary
+*.zip binary
+*.tar.gz binary
