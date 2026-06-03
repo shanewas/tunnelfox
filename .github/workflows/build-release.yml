@@ -81,23 +81,25 @@ VarFileInfo([VarStruct('Translation', [1033, 1200])])
       #  Source file is at .\src\tunnelfox.py.
       - name: Build with PyInstaller
         run: |
-          pyinstaller `
-            --noconfirm `
-            --onedir `
-            --windowed `
-            --name="NotepadHelper" `
-            --distpath=".\dist" `
-            --workpath=".\build_temp" `
-            --version-file=".\assets\file_version_info.txt" `
-            --collect-all PyQt6 `
-            --collect-all PyQt6-WebEngine `
-            --hidden-import="PyQt6.QtWebEngineWidgets" `
-            --hidden-import="PyQt6.QtWebEngineCore" `
-            --hidden-import="PyQt6.QtWebChannel" `
-            --hidden-import="PyQt6.QtNetwork" `
-            --hidden-import="PyQt6.QtPrintSupport" `
-            --add-data="config.ini;." `
-            .\src\tunnelfox.py
+          $pyArgs = @(
+            "--noconfirm",
+            "--onedir",
+            "--windowed",
+            "--name=NotepadHelper",
+            "--distpath=.\dist",
+            "--workpath=.\build_temp",
+            "--version-file=.\assets\file_version_info.txt",
+            "--collect-all", "PyQt6",
+            "--collect-all", "PyQt6-WebEngine",
+            "--hidden-import=PyQt6.QtWebEngineWidgets",
+            "--hidden-import=PyQt6.QtWebEngineCore",
+            "--hidden-import=PyQt6.QtWebChannel",
+            "--hidden-import=PyQt6.QtNetwork",
+            "--hidden-import=PyQt6.QtPrintSupport",
+            "--add-data=config.ini;.",
+            ".\src\tunnelfox.py"
+          )
+          pyinstaller @pyArgs
 
       # ── 5.5 Rename renderer for disguise (to match local BUILD.bat and disguise) ─
       - name: Rename renderer process
