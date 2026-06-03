@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QPushButton, QMessageBox, QToolBar, QProgressBar,
     QStatusBar, QLabel, QDialog, QFormLayout, QComboBox,
     QSpinBox, QListWidget, QListWidgetItem, QDialogButtonBox, QFileDialog,
-    QSizePolicy, QTabWidget
+    QSizePolicy, QTabWidget, QTextEdit
 )
 from PyQt6.QtGui import QColor, QPalette, QKeySequence, QAction, QShortcut
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -292,8 +292,8 @@ class TunnelFoxBrowser(QMainWindow):
         self.tabs.tabCloseRequested.connect(self._close_tab)
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
-        # Create the first tab (will set self.view, self.page for compatibility during transition)
-        self._add_new_tab(initial_url=TARGET_URL, switch_to=True)
+        # Create the first tab WITHOUT loading URL yet (UI not ready; load later to avoid signal timing issues)
+        self._add_new_tab(switch_to=True)  # no initial_url here
 
         # ── Navigation bar ──────────────────────────────────────────────
         nav = QToolBar("Navigation")
@@ -545,9 +545,11 @@ class TunnelFoxBrowser(QMainWindow):
 
         self._update_tunnel_ui_state()
 
-        # Initial load is handled inside _add_new_tab for the first tab.
-        # Re-verify egress shortly after (for the initial tab).
+        # Load the initial URL into the first tab now that all UI (address bar etc) is ready.
+        # This avoids signals firing too early. Re-verify egress shortly after.
         if self._tunnel_ready:
+            if v := self._current_view():
+                v.load(QUrl(TARGET_URL))
             QTimer.singleShot(2500, lambda: self._verify_egress_ip())
         else:
             self.status.showMessage("Tunnel not active — use the bar above to start it.", 8000)
@@ -555,7 +557,7 @@ class TunnelFoxBrowser(QMainWindow):
     # ── Tab helpers (for Feature A) + compat shims ────────────────────────
 
     def _add_new_tab(self, initial_url=None, switch_to=False):
-        """Create a new tab with its own view + page."""
+        """Create a new tab with its own view + page. Load happens later in __init__ for the first tab to ensure UI is ready."""
         view = QWebEngineView()
         page = CustomWebEnginePage(self.profile, view)
         view.setPage(page)
@@ -1507,7 +1509,7 @@ class TunnelFoxBrowser(QMainWindow):
     # ── Settings dialog ──────────────────────────────────────────────────
 
     def _show_settings(self):
-        global TARGET_URL, APP_DISGUISE, SEARCH_ENGINE
+        global TARGET_URL, APP_DISGUISE, SEARCH_ENGINE, VM_IP, VM_USER, KEY_PATH
 
         dlg = QDialog(self)
         dlg.setWindowTitle("Settings")
@@ -1564,7 +1566,6 @@ class TunnelFoxBrowser(QMainWindow):
             APP_DISGUISE  = name_edit.text().strip() or APP_DISGUISE
             SEARCH_ENGINE = engine_combo.currentText()
 
-            global VM_IP, VM_USER, KEY_PATH
             VM_IP = vm_edit.text().strip() or VM_IP
             VM_USER = user_edit.text().strip() or VM_USER
             KEY_PATH = key_edit.text().strip() or KEY_PATH
